@@ -20,6 +20,7 @@ from fabric.exceptions import NetworkError
 #FUNCTION SET
 ################################################
 
+@parallel(pool_size=10)
 @task
 def install_pkg(pkg=None):
 	""" Routine Fabric pour l installation d'un paquet. Elle prend en argument le nom du paquet. 
@@ -104,6 +105,7 @@ def install_pkg(pkg=None):
 	
 	except NetworkError as network_error:
 		print(red("ERROR : %s" % (network_error)))
+	
 	return 0
 
 @task
