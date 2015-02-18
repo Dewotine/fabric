@@ -132,6 +132,9 @@ def setup_postfix(pkg=None):
 	else :
 		puts(yellow("Postfix est lance"))
 
+
+	
+
 	file_update(postfix_conf, lambda mon_fichier:mon_fichier.replace(old_line,new_line))
 	
 
