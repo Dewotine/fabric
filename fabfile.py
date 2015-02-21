@@ -133,7 +133,11 @@ def install_pkg(pkg=None):
 
 
 #	file_update(postfix_conf, lambda mon_fichier:mon_fichier.replace(old_line,new_line))
-	
+
+# La routine check_swap_usage() se base sur le fichier /proc/*/status et sur le champs VmSwap
+# pour determiner la consommation de memoire swap par process. Sur RHEL4 et 5, le champs VMSwap
+# n'est pas disponible. On utilise alors le champs VmSize qui donne l'utilisation de la mémoire
+# virtuelle sur le serveur 
 @task
 def check_swap_usage():
 	"""Cette routine permet de tester l\'usage de la memoire swap sur un serveur"""
@@ -152,22 +156,18 @@ def check_swap_usage():
 			if 'SLES' in osname:
 				sudo("echo 'Voici les principaux processus consommant le plus de memoire SWAP sur le serveur '" + hst + ": > " + tmp_file)
 				sudo(cmd + ">> " + tmp_file)
-				result = sudo ("cat " + tmp_file)
-				sys.stdout.write(result+"\n")
 			elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
 				sudo("echo 'Voici les principaux processus consommant le plus de memoire SWAP sur le serveur '" + hst + ": > " + tmp_file)
 				sudo(cmd + ">> " + tmp_file)
-				result = sudo ("cat " + tmp_file)
-				sys.stdout.write(result+"\n")
 			else:
 				puts(red("Distribution non reconnue"))
 				exit(1)
+			result = sudo ("cat " + tmp_file)
+			sys.stdout.write(result+"\n")
 			sudo("rm -f " + tmp_file)
 		except NetworkError as network_error:
 			print(red("ERROR : %s" % (network_error)))
 			exit(2)
-			
-	
 	puts(green("La routine check_swap_usage s\'est terminee en succes"))
 	exit(0)
 	
