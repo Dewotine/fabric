@@ -37,7 +37,7 @@ def install_pkg(pkg=None):
 		if env["pkg"] is None:
 			raise ValueError("Aucun nom de paquet specifie")
 	except ValueError :
-		exit(4)
+		exit(1)
 	
 	try:
 		with settings(hide('running', 'stdout')):
@@ -60,13 +60,11 @@ def install_pkg(pkg=None):
 							puts(green("Le paquet %s a ete trouve. Installation en cours" % env["pkg"]))
 						else: 
 							puts(red("Echec : Le paquet %s n\'a pas ete trouve!" % env["pkg"]))
-							exit(3) 
 					# Test si le paquet n est pas deja installe
 					if sudo("rpm -qi " + env["pkg"]).return_code != 0:
 						package_install_zypper(env["pkg"])
 					else:
 						puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (env["pkg"],hst)))
-						exit(2)
 			# Pour Redhat
 			elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
 				# warn_only=True => Le script ne s arrete pas si le paquet n est pas installe	
@@ -82,13 +80,11 @@ def install_pkg(pkg=None):
 							puts(green("Le paquet %s a ete trouve. Installation en cours" % env["pkg"]))
 						else: 
 							puts(red("Echec : Le paquet %s n\'a pas ete trouve!" % env["pkg"]))
-							exit(3)
 					# Installe le paquet si il n est pas deja installe
 					if sudo("rpm -qi " + env["pkg"]).return_code != 0:	
 						package_install_yum(env["pkg"])
 					else:
 						puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (env["pkg"],hst)))
-						exit(2)
 			# Sors si la distribution n est pas listee
 			else:
 				puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,hst)))
@@ -105,7 +101,6 @@ def install_pkg(pkg=None):
 	except NetworkError as network_error:
 		print(red("ERROR : %s" % (network_error)))
 	
-	exit(0)
 
 #@task
 #def setup_postfix(pkg=None):
@@ -165,11 +160,11 @@ def check_swap_usage():
 			result = sudo ("cat " + tmp_file)
 			sys.stdout.write(result+"\n")
 			sudo("rm -f " + tmp_file)
+			puts(green("La routine check_swap_usage s\'est terminee en succes"))
 		except NetworkError as network_error:
 			print(red("ERROR : %s" % (network_error)))
-			exit(2)
-	puts(green("La routine check_swap_usage s\'est terminee en succes"))
-	exit(0)
+			
+	
 	
 	
 
