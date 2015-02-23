@@ -137,7 +137,6 @@ def install_pkg(pkg=None):
 def check_swap_usage():
 	"""Cette routine permet de tester l\'usage de la memoire swap sur un serveur"""
 	tmp_file="/tmp/swap.txt" # Fichier servant à construire le message remonté par la routine
-	hst="" # Nom d'hote du serveur sur lequel est executee la routine
 	osname="" # Distribution sur laquelle est executee la routine
 	
 	# Commande pour les RHEL6, 7 et SLES 11 et 12
@@ -146,13 +145,12 @@ def check_swap_usage():
 	cmd_rhel45="for file in /proc/*/status ; do awk '/|VmSize|Name/{printf $2 " " $3}END{ print ""}' $file; done | grep kB | sort -k 3 -n"
 	with hide('output','running','warnings'), settings(warn_only=True):
 		try :
-			hst = run('hostname')
 			osname = distrib_id()
 			if 'SLES' in osname:
-				sudo("echo 'Voici les principaux processus consommant le plus de memoire SWAP sur le serveur '" + hst + ": > " + tmp_file)
+				sudo("echo 'Voici les principaux processus consommant le plus de memoire SWAP sur le serveur '" + env.host + ": > " + tmp_file)
 				sudo(cmd + ">> " + tmp_file)
 			elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-				sudo("echo 'Voici les principaux processus consommant le plus de memoire SWAP sur le serveur '" + hst + ": > " + tmp_file)
+				sudo("echo 'Voici les principaux processus consommant le plus de memoire SWAP sur le serveur '" + env.host + ": > " + tmp_file)
 				sudo(cmd + ">> " + tmp_file)
 			else:
 				puts(red("Distribution non reconnue"))
