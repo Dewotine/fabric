@@ -20,86 +20,72 @@ from fabric.exceptions import NetworkError
 #FUNCTION SET
 ################################################
 
+################################################
+# author: cedric.bleschet@inserm.fr (2015)
+# La routine install_pkg permet d'installer un paquet
+# Si le nom du paquet n est pas passe en argument, il le demande
+##############################################
 @task
 def install_pkg(pkg=None):
-	""" Routine Fabric pour l installation d'un paquet. Elle prend en argument le nom du paquet. 
+	""" Routine Fabric pour l installation d'un paquet. Elle prend en argument le nom du paquet.
 	Si rien n'est saisie comme argument, elle redemande un nom de paquet"""
-	hst = '' # Nom d'hote de la machine cible
 	osname = ''	# Systeme d'exploitation de la machine cible
-	
+	is_redhat=True
 	if pkg is not None:
 		env["pkg"] = pkg
 	elif pkg is None and env.get("pkg") is None:
-		env["pkg"] = prompt("Quel est le nom du paquet à installer? ")
+		env["pkg"] = prompt("Quel est le nom du paquet a installer? ")
 	
-# Verifie la saisie d'un nom de paquet 
-	try : 
+	# Verifie la saisie d'un nom de paquet
+	try :
 		if env["pkg"] is None:
 			raise ValueError("Aucun nom de paquet specifie")
 	except ValueError :
-		exit(1)
-	
+		return 1
 	try:
-		with settings(hide('running', 'stdout')):
-			# Recuperation d'information sur le serveur cible (Sors si erreur)
-			hst = run('hostname')
+		with settings(warn_only=True):
+			result = sudo("rpm -qi " + env["pkg"])
+		if result.failed:
 			osname = distrib_id()
-			assert osname is not None or hst is not none
-			# Pour SLES
+			assert osname is not None
 			if 'SLES' in osname:
-				# warn_only=True => Le script ne s arrete pas si le paquet n est pas installe
-				with settings(warn_only=True):
-					# Verifie si le paquet est disponible
-					if sudo("zypper search " + env["pkg"]).return_code == 0:
-						puts(green("Le paquet %s a ete trouve. Installation en cours" % env["pkg"]))
-					else: 
-						puts(yellow("Le paquet %s n\'a pas ete trouve. Rafraichissement des données puis nouvelle tentative" % env["pkg"]))
-						# Si le paquet n'a pas ete trouvé la premiere, il effectue un clean et refait la recherche
-						sudo("zypper clean all")
-						if sudo("zypper search " + env["pkg"]).return_code == 0:
-							puts(green("Le paquet %s a ete trouve. Installation en cours" % env["pkg"]))
-						else: 
-							puts(red("Echec : Le paquet %s n\'a pas ete trouve!" % env["pkg"]))
-					# Test si le paquet n est pas deja installe
-					if sudo("rpm -qi " + env["pkg"]).return_code != 0:
-						package_install_zypper(env["pkg"])
-					else:
-						puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (env["pkg"],hst)))
-			# Pour Redhat
+				select_package('zypper')
+				is_redhat=False
 			elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-				# warn_only=True => Le script ne s arrete pas si le paquet n est pas installe	
-				with settings(warn_only=True):
-					# Test si le paquet existe
-					if sudo("yum info " + env["pkg"]).return_code == 0:
-						puts(green("Le paquet %s a ete trouve. Installation en cours" % env["pkg"]))
-					else: 
-						puts(yellow(" Le paquet %s n\'a pas ete trouve. Rafraichissement des données puis nouvelle tentative" % env["pkg"]))
-						# Effectue un clean et reteste si le paquet peut etre trouve
-						sudo("yum clean all")
-						if sudo("yum info " + env["pkg"]).return_code == 0:
-							puts(green("Le paquet %s a ete trouve. Installation en cours" % env["pkg"]))
-						else: 
-							puts(red("Echec : Le paquet %s n\'a pas ete trouve!" % env["pkg"]))
-					# Installe le paquet si il n est pas deja installe
-					if sudo("rpm -qi " + env["pkg"]).return_code != 0:	
-						package_install_yum(env["pkg"])
-					else:
-						puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (env["pkg"],hst)))
-			# Sors si la distribution n est pas listee
+				select_package('yum')
+				is_redhat=True
 			else:
-				puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,hst)))
-				exit(1)
-			
-			# Verifie si le paquet a bien ete installe. Un probleme a pu apparaitre 
-			# a cause de dependance manquante, ou le serveur de depot est inaccessible 
-			with settings(warn_only=True):
-				if sudo("rpm -qi " + env["pkg"]).return_code == 0:
-					puts(green("Le paquet %s a ete installe sur le serveur %s" % (env["pkg"],hst)))
-				else: 
-					puts(red("Une erreur s\'est produite pendant l\'installation du paquet %s a sur le serveur %s" % (env["pkg"],hst)))
-	
+				puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
+				return 1
+			try:	
+				package_install(env["pkg"])
+			except e:
+				puts(red(e))
+				# Don't compare boolean values to True or False using == .
+				# Yes:   if greeting:
+				# No:    if greeting == True:
+				# Worse: if greeting is True:
+				if is_redhat:
+					sudo("yum clean all")
+				else:
+					sudo("zypper clean all")
+				try:
+					package_install(env["pkg"])
+				except:
+					puts(red(e))
+					return 3
+			finally:
+				result = sudo("rpm -qi " + env["pkg"])
+				if result.failed:
+					puts(red("Erreur : Le paquet %s n a pu être installe sur le serveur %s" % (env["pkg"],env.host)))
+				else:
+					puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (env["pkg"],env.host)))
+		else:
+			puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (env["pkg"],env.host)))
+			return 2            		
 	except NetworkError as network_error:
 		print(red("ERROR : %s" % (network_error)))
+	return 0
 	
 
 #@task
