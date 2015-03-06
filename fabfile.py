@@ -29,7 +29,6 @@ from fabric.exceptions import NetworkError
 def install_pkg(*pkg):
     """ Routine pour l installation d'un ou plusieurs paquets. Elle prend en argument le nom du paquet. Si rien n'est saisie comme argument, elle redemande un nom de paquet"""
     osname = '' # Systeme d'exploitation de la machine cible
-    is_redhat = True # Variable indiquant si le systeme est un redhat
 
     # Verification du nom de paquet
     with hide('running','output','warnings'):
@@ -59,10 +58,8 @@ def install_pkg(*pkg):
 				assert osname is not None
 				if 'SLES' in osname:
 					select_package('zypper')
-					is_redhat=False
 				elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
 					select_package('yum')
-					is_redhat=True
 				else:
 					puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
 					return 1
@@ -78,10 +75,7 @@ def install_pkg(*pkg):
 						puts("Installation en cours")
 				except SystemError:
 					# nettoie le cache et retente l installation
-					if is_redhat:
-						sudo("yum clean all")
-					else:
-						sudo("zypper refresh")
+					package_clean()
 						with settings(warn_only=True):
 							package_install(packet)
 				# Verifie si le paquet a bien pu s installer				
