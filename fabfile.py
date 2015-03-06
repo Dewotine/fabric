@@ -49,57 +49,59 @@ def install_pkg(*pkg):
                 return 1
 
         # Envoie des commandes d'installation sur le serveur cible
-        try:
-            for packet in env["pkg"]:
-                with settings(warn_only=True):
-                #Verifie si le paquet est deja instale
-                    result = sudo("rpm -qi " + packet)
-                if result.failed:
-                    osname = distrib_id()
-                    assert osname is not None
-                    if 'SLES' in osname:
-                        select_package('zypper')
-                        is_redhat=False
-                    elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-                        select_package('yum')
-                        is_redhat=True
-                    else:
-                        puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
-                        return 1
-                    # Installation du paquet
-                    try:
-                        with settings(warn_only=True):
-                            package_install(packet)
-                            result_inst = sudo("rpm -qi " + packet)
-                        if result_inst.failed:
-                            puts("Une erreur s est produite")
-                            raise SystemError
-                        else:
-                            puts("Installation en cours")
-                    except SystemError:
-                        # nettoie le cache et retente l installation
-                        if is_redhat:
-                            sudo("yum clean all")
-                        else:
-                            sudo("zypper refresh")
-                        with settings(warn_only=True):
-                            package_install(packet)
-                    # Verifie si le paquet a bien pu s installer
-					 finally:
-                        with settings(warn_only=True):
-                            result = sudo("rpm -qi " + packet)
-                        if result.failed:
-                            puts(red("Erreur : Le paquet %s n a pu etre installe sur le serveur %s" % (packet,env.host)))
-                            return 3
-                        else:
-                            puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (packet,env.host)))
-                else:
-                    puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (packet,env.host)))
-        # En cas de probleme de connexion au serveur cible
-        except NetworkError as network_error:
-            print(red("ERROR : %s" % (network_error)))
-        return 0
-	
+	try:
+		for packet in env["pkg"]:
+			with settings(warn_only=True):
+			#Verifie si le paquet est deja instale
+				result = sudo("rpm -qi " + packet)
+			if result.failed:
+				osname = distrib_id()
+				assert osname is not None
+				if 'SLES' in osname:
+					select_package('zypper')
+					is_redhat=False
+				elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+					select_package('yum')
+					is_redhat=True
+				else:
+					puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
+					return 1
+				# Installation du paquet
+				try:
+					with settings(warn_only=True):
+						package_install(packet)
+					result_inst = sudo("rpm -qi " + packet)
+					if result_inst.failed:
+						puts("Une erreur s est produite")
+						raise SystemError
+					else:
+						puts("Installation en cours")
+				except SystemError:
+					# nettoie le cache et retente l installation
+					if is_redhat:
+						sudo("yum clean all")
+					else:
+						sudo("zypper refresh")
+						with settings(warn_only=True):
+							package_install(packet)
+				# Verifie si le paquet a bien pu s installer				
+				finally:
+					with settings(warn_only=True):
+						result = sudo("rpm -qi " + packet)
+						if result.failed:
+							puts(red("Erreur : Le paquet %s n a pu etre installe sur le serveur %s" % (packet,env.host)))
+							return 3
+						else:
+							puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (packet,env.host)))								
+			else:
+				puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (packet,env.host)))
+        
+	# En cas de probleme de connexion au serveur cible
+	except NetworkError as network_error:
+		print(red("ERROR : %s" % (network_error)))
+		return 4
+
+	return 0
 
 #@task
 #def setup_postfix(pkg=None):
