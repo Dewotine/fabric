@@ -157,7 +157,52 @@ def check_swap_usage():
 		except NetworkError as network_error:
 			print(red("ERROR : %s" % (network_error)))
 			
-	
+#############################################
+# author: cedric.bleschet@inserm.fr (2015)
+# La routine install_pkg permet d'installer un paquet
+# Si le nom du paquet n est pas passe en argument, il le demande
+##############################################
+@task
+def update_pkg(pkg=None):
+    """ Routine Fabric pour la mise a jour d'un paquet. Elle prend en argument le nom du paquet.
+    Si rien n'est saisie comme argument, elle redemande un nom de paquet"""
+    osname = '' # Systeme d'exploitation de la machine cible
+    if pkg is not None:
+        env["pkg"] = pkg
+    elif pkg is None and env.get("pkg") is None:
+        env["pkg"] = prompt("Quel est le nom du paquet a installer? ")
+
+    # Verifie la saisie d'un nom de paquet
+    try :
+        if env["pkg"] is None:
+            raise ValueError("Aucun nom de paquet specifie")
+    except ValueError :
+        exit(1)
+
+    try:
+        osname = distrib_id()
+        assert osname is not None
+        # Pour SLES
+        if 'SLES' in osname:
+            select_package('zypper')
+        # Pour Redhat
+        elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+            select_package('yum')
+        else:
+            puts(red("Une erreur s\'est produite pendant la mise du paquet %s a sur le serveur %s" % (env["pkg"],env.host)))
+            return 1
+
+        result_upd = package_update(env["pkg"])
+        if result_upd.failed:
+            puts("failed")
+        else:
+            puts("success")
+
+        #package_clean()
+        #package_update(env["pkg"])
+        puts(green("Le paquet %s a ete mis a jour sur le serveur %s" % (env["pkg"],env.host)))
+    except NetworkError as network_error:
+        print(red("ERROR : %s" % (network_error)))	
 	
 	
 
