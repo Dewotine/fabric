@@ -13,8 +13,8 @@ from cuisine import *
 from fabric.utils import puts
 from fabric.colors import *
 from fabtools.system import * # pour distrib_id
-from fabric.exceptions import NetworkError
-
+#from fabric.exceptions import NetworkError
+from fabric.exceptions import *
 
 ################################################
 #FUNCTION SET
@@ -27,27 +27,30 @@ from fabric.exceptions import NetworkError
 ##############################################
 @task
 def install_pkg(*pkg):
-    """ Routine pour l installation d'un ou plusieurs paquets. Elle prend en argument le nom du paquet. Si rien n'est saisie comme argument, elle redemande un nom de paquet"""
-    osname = '' # Systeme d'exploitation de la machine cible
+	""" Routine pour l installation d'un ou plusieurs paquets. Elle prend en argument le nom du paquet. Si rien n'est saisie comme argument, elle redemande un nom de paquet"""
+	osname = '' # Systeme d'exploitation de la machine cible
+	result='' # resultat de la premiere tentative d'installation
+	result2='' # resultat de la seconde tentative d'installation
+	#env.abort_on_prompts = True
 
-    # Verification du nom de paquet
-    with hide('running','output','warnings'):
-        try:
-            if pkg:
-                env["pkg"] = pkg
-            else:
-                raise ValueError("Aucun nom de paquet specifie")
-                puts(yellow("Aucun nom de paquet specifie en argument"))
-        except ValueError:
-            try:
-                env["pkg"] = prompt("Quel est le nom du paquet a installer? ")
-                if not env["pkg"]:
-                    raise ValueError
-            except ValueError:
-                puts(red("Aucun nom de paquet"))
-                return 1
+	# Verification du nom de paquet
+	with hide('running','output','warnings'):
+		try:
+			if pkg:
+				env["pkg"] = pkg
+			else:
+				raise ValueError("Aucun nom de paquet specifie")
+				puts(yellow("Aucun nom de paquet specifie en argument"))
+		except ValueError:
+			try:
+				env["pkg"] = prompt("Quel est le nom du paquet a installer? ")
+				if not env["pkg"]:
+					raise ValueError
+			except ValueError:
+				puts(red("Aucun nom de paquet"))
+				return 1
 
-        # Envoie des commandes d'installation sur le serveur cible
+	# Envoie des commandes d'installation sur le serveur cible
 	try:
 		for packet in env["pkg"]:
 			with settings(warn_only=True):
@@ -64,29 +67,21 @@ def install_pkg(*pkg):
 					puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
 					return 1
 				# Installation du paquet
-				try:
-					with settings(warn_only=True):
-						package_install(packet)
-					result_inst = sudo("rpm -qi " + packet)
-					if result_inst.failed:
-						puts("Une erreur s est produite")
-						raise SystemError
-					else:
-						puts("Installation en cours")
-				except SystemError:
-					# nettoie le cache et retente l installation
+				with settings(warn_only=True):
+					package_install(packet)
+					result = sudo("rpm -qi " + packet)
+				if result.failed:
 					package_clean()
-						with settings(warn_only=True):
-							package_install(packet)
-				# Verifie si le paquet a bien pu s installer				
-				finally:
 					with settings(warn_only=True):
-						result = sudo("rpm -qi " + packet)
-						if result.failed:
-							puts(red("Erreur : Le paquet %s n a pu etre installe sur le serveur %s" % (packet,env.host)))
-							return 3
-						else:
-							puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (packet,env.host)))								
+						package_install(packet)					
+						result2 = sudo("rpm -qi " + packet)
+					if result2.failed:
+						puts(red("Erreur : Le paquet %s n a pu etre installe sur le serveur %s" % (packet,env.host)))
+						return 3
+					else:
+						puts(green("Mise à jour du cache OK"))
+				else:
+					puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (packet,env.host)))
 			else:
 				puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (packet,env.host)))
         
@@ -163,47 +158,59 @@ def check_swap_usage():
 # Si le nom du paquet n est pas passe en argument, il le demande
 ##############################################
 @task
-def update_pkg(pkg=None):
-    """ Routine Fabric pour la mise a jour d'un paquet. Elle prend en argument le nom du paquet.
-    Si rien n'est saisie comme argument, elle redemande un nom de paquet"""
-    osname = '' # Systeme d'exploitation de la machine cible
-    if pkg is not None:
-        env["pkg"] = pkg
-    elif pkg is None and env.get("pkg") is None:
-        env["pkg"] = prompt("Quel est le nom du paquet a installer? ")
-
-    # Verifie la saisie d'un nom de paquet
-    try :
-        if env["pkg"] is None:
-            raise ValueError("Aucun nom de paquet specifie")
-    except ValueError :
-        exit(1)
-
-    try:
-        osname = distrib_id()
-        assert osname is not None
-        # Pour SLES
-        if 'SLES' in osname:
-            select_package('zypper')
-        # Pour Redhat
-        elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-            select_package('yum')
-        else:
-            puts(red("Une erreur s\'est produite pendant la mise du paquet %s a sur le serveur %s" % (env["pkg"],env.host)))
-            return 1
-
-        result_upd = package_update(env["pkg"])
-        if result_upd.failed:
-            puts("failed")
-        else:
-            puts("success")
-
-        #package_clean()
-        #package_update(env["pkg"])
-        puts(green("Le paquet %s a ete mis a jour sur le serveur %s" % (env["pkg"],env.host)))
-    except NetworkError as network_error:
-        print(red("ERROR : %s" % (network_error)))	
+def update_pkg(*pkg):
+	""" Routine Fabric pour la mise a jour d'un paquet. Elle prend en argument le nom du paquet.
+	Si rien n'est saisie comme argument, elle redemande un nom de paquet"""
+	osname = '' # Systeme d'exploitation de la machine cible
+	#env.abort_on_prompts = True
+	update_result = ''
 	
-	
+	# Verification du nom de paquet
+	with hide('running','output','warnings'):
+		try:
+			if pkg:
+				env["pkg"] = pkg
+			else:
+				raise ValueError("Aucun nom de paquet specifie")
+				puts(yellow("Aucun nom de paquet specifie en argument"))
+		except ValueError:
+			try:
+				env["pkg"] = prompt("Quel est le nom du paquet a installer? ")
+				if not env["pkg"]:
+					raise ValueError
+			except ValueError:
+				puts(red("Aucun nom de paquet"))
+				return 1
+
+	try:
+		osname = distrib_id()
+		assert osname is not None
+		with hide('running','output','warnings'):
+			# Pour SLES
+			if 'SLES' in osname:
+				sudo ("zypper --non-interactive refresh")
+				for packet in env["pkg"]:
+					update_result = sudo("zypper --non-interactive update " + packet)
+					if update_result.find("Error") == 0 :
+						puts(red("Une erreur s\'est produite pendant la mise du paquet %s a sur le serveur %s" % (packet,env.host)))
+						return 2
+					else:
+						puts(green("Le paquet %s a ete mis a jour sur le serveur SLES %s" % (packet,env.host)))
+			# Pour Redhat
+			elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+				sudo ("yum clean all")
+				for packet in env["pkg"]:
+					update_result = sudo("yum -y update " + packet)
+					if update_result.find("Error") == 0:
+						puts(red("Une erreur s\'est produite pendant la mise a jour du paquet %s sur le serveur RHEL %s")% (packet,env.host))
+						return 3
+					else:
+						puts(green("Le paquet %s a ete mis a jour sur le serveur %s" % (packet,env.host)))
+			else:
+				puts(red("Impossible de reconnaitre le type de serveur"))
+				return 1
+
+	except NetworkError as network_error:
+		print(red("ERROR : %s" % (network_error)))	
 
 
