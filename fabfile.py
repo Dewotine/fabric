@@ -50,40 +50,44 @@ def install_pkg(*pkg):
 				puts(red("Aucun nom de paquet"))
 				return 1
 
-	# Envoie des commandes d'installation sur le serveur cible
-	try:
-		for packet in env["pkg"]:
-			with settings(warn_only=True):
-			#Verifie si le paquet est deja instale
-				result = sudo("rpm -qi " + packet)
-			if result.failed:
-				osname = distrib_id()
-				assert osname is not None
-				if 'SLES' in osname:
-					select_package('zypper')
-				elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-					select_package('yum')
-				else:
-					puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
-					return 1
-				# Installation du paquet
-				with settings(warn_only=True):
-					package_install(packet)
-					result = sudo("rpm -qi " + packet)
-				if result.failed:
-					package_clean()
-					with settings(warn_only=True):
-						package_install(packet)					
-						result2 = sudo("rpm -qi " + packet)
-					if result2.failed:
-						puts(red("Erreur : Le paquet %s n a pu etre installe sur le serveur %s" % (packet,env.host)))
-						return 3
-					else:
-						puts(green("Mise à jour du cache OK"))
-				else:
-					puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (packet,env.host)))
-			else:
-				puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (packet,env.host)))
+	        # Envoie des commandes d'installation sur le serveur cible
+		try:
+            		for packet in env["pkg"]:
+                		with settings(warn_only=True):
+                		#Verifie si le paquet est deja instale
+	                    		result = sudo("rpm -qi " + packet)
+                			if result.failed:
+                    				osname = distrib_id()
+                    				assert osname is not None
+                    				if 'SLES' in osname:
+                        				select_package('zypper')
+                    				elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+                        				select_package('yum')
+                    				else:
+                        				puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
+                        				return 1
+                				# Installation du paquet
+                    				try:
+                        				with settings(warn_only=True):
+                            					package_install(packet)
+                        				sudo("rpm -qi " + packet)
+                    				except:
+                        				# nettoie le cache et retente l installation
+                        				puts("2e tentative avec nettoyage du cache")
+                        				package_clean()
+                        				with settings(warn_only=True):
+                            					package_install(packet)
+                				# Verifie si le paquet a bien pu s installer
+                    				finally:
+                        				with settings(warn_only=True):
+                            					result = sudo("rpm -qi " + packet)
+                        				if result.failed:
+                            					puts(red("Erreur : Le paquet %s n\'a pu etre installe sur le serveur %s" % (packet,env.host)))
+                        					return 3
+                        				else:
+                            					puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (packet,env.host)))
+                			else:
+                    				puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (packet,env.host)))
         
 	# En cas de probleme de connexion au serveur cible
 	except NetworkError as network_error:
@@ -188,24 +192,28 @@ def update_pkg(*pkg):
 		with hide('running','output','warnings'):
 			# Pour SLES
 			if 'SLES' in osname:
-				sudo ("zypper --non-interactive refresh")
-				for packet in env["pkg"]:
-					update_result = sudo("zypper --non-interactive update " + packet)
-					if update_result.find("Error") == 0 :
-						puts(red("Une erreur s\'est produite pendant la mise du paquet %s a sur le serveur %s" % (packet,env.host)))
-						return 2
-					else:
-						puts(green("Le paquet %s a ete mis a jour sur le serveur SLES %s" % (packet,env.host)))
+				try:
+					sudo ("zypper --non-interactive refresh")
+					for packet in env["pkg"]:
+						update_result = sudo("zypper --non-interactive update " + packet)
+						if update_result.find("Error") == 0 :
+							puts(red("Une erreur s\'est produite pendant la mise du paquet %s a sur le serveur %s" % (packet,env.host)))
+							return 2
+						else:
+							puts(green("Le paquet %s a ete mis a jour sur le serveur SLES %s" % (packet,env.host)))
+				except SystemExit:
+		                	puts(red("Une erreur s\'est produite en tentant de metre a jour le serveur SLES %s" % env.host))
 			# Pour Redhat
 			elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-				sudo ("yum clean all")
-				for packet in env["pkg"]:
-					update_result = sudo("yum -y update " + packet)
-					if update_result.find("Error") == 0:
-						puts(red("Une erreur s\'est produite pendant la mise a jour du paquet %s sur le serveur RHEL %s")% (packet,env.host))
-						return 3
-					else:
-						puts(green("Le paquet %s a ete mis a jour sur le serveur %s" % (packet,env.host)))
+				try:
+					sudo ("yum clean all")
+					for packet in env["pkg"]:
+						try:
+							sudo("yum -y update " + packet)
+						except SystemExit:
+							puts(red("Une erreur s\'est produite pendant la mise a jour du paquet %s sur le serveur RHEL %s")% (packet,env.host))
+						else:
+							puts(green("Le paquet %s a ete mis a jour sur le serveur %s" % (packet,env.host)))
 			else:
 				puts(red("Impossible de reconnaitre le type de serveur"))
 				return 1
