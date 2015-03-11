@@ -127,34 +127,52 @@ def install_pkg(*pkg):
 # pour determiner la consommation de memoire swap par process. Sur RHEL4 et 5, le champs VMSwap
 # n'est pas disponible. On utilise alors le champs VmSize qui donne l'utilisation de la mémoire
 # virtuelle sur le serveur 
+
 @task
 def check_swap_usage():
-	"""Cette routine permet de tester l\'usage de la memoire swap sur un serveur"""
-	tmp_file="/tmp/swap.txt" # Fichier servant à construire le message remonté par la routine
-	osname="" # Distribution sur laquelle est executee la routine
-	
-	# Commande pour les RHEL6, 7 et SLES 11 et 12
-	cmd="for file in /proc/*/status ; do awk '/VmSwap|Name/{printf $2 \" \" $3}END{ print \"\"}' $file; done | sort -k2 -n -r | grep kB| head -15"
-	# Commande Sur RHEL4 et 5, nous n'avons pas l'information de la mémoire SWAP. On indique la taille mémoire virtuelle (swap + reserved)
-	cmd_rhel45="for file in /proc/*/status ; do awk '/|VmSize|Name/{printf $2 " " $3}END{ print ""}' $file; done | grep kB | sort -k 3 -n"
-	with hide('output','running','warnings'), settings(warn_only=True):
-		try :
-			osname = distrib_id()
-			if 'SLES' in osname:
-				sudo("echo 'Voici les principaux processus consommant le plus de memoire SWAP sur le serveur '" + env.host + ": > " + tmp_file)
-				sudo(cmd + ">> " + tmp_file)
-			elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-				sudo("echo 'Voici les principaux processus consommant le plus de memoire SWAP sur le serveur '" + env.host + ": > " + tmp_file)
-				sudo(cmd + ">> " + tmp_file)
-			else:
-				puts(red("Distribution non reconnue"))
-				exit(1)
-			result = sudo ("cat " + tmp_file)
-			sys.stdout.write(result+"\n")
-			sudo("rm -f " + tmp_file)
-			puts(green("La routine check_swap_usage s\'est terminee en succes"))
-		except NetworkError as network_error:
-			print(red("ERROR : %s" % (network_error)))
+	"""Cette routine permet d'obtenir le detail sur l\'usage de la memoire swap sur un serveur"""
+	tmp_file="/tmp/swap.txt" # Fichier servant a construire le message remonter la routine
+    	osname="" # Distribution sur laquelle est executee la routine
+    	rhel_version = ""
+    	sles_version = ""
+
+    	# Commande pour les RHEL6, 7 et SLES 11 et 12
+    	cmd="for file in /proc/*/status ; do awk '/VmSwap|Name/{printf $2 \" \" $3}END{ print \"\"}' $file 2 > /dev/null; done | sort -k2 -n -r | grep kB| head -15"
+     	#Commande Sur RHEL4 et 5, nous n'avons pas l'information de la memoire SWAP. On indique la taille memoire virtuelle (swap + reserved)
+    	cmd_rhel45="for file in /proc/*/status ; do awk '/Uid|Tgid|VmSize|Name/{printf $2 \" \" $3}END{ print \"\"}' $file 2> /dev/null; done | grep kB | cut -d \" \" -f1,3,4 | sort -k2 -n -r |  head -15"
+
+    	with hide('status','aborts','stdout','warnings','running','stderr'):
+        	try :
+            		osname = distrib_id()
+            		if 'SLES' in osname:
+                		sles_version = find_os_distro_cbl()
+                		if sles_version == "sles11SP1":
+                    			print("Impossible de savoir quel processus consomme le plus de RAM sur SLES 11 SP1")
+                    			print("Les processus consommant le plus de memoire (vive + SWAP) sur le serveur %s sont" %env.host)
+                    			result = sudo(cmd_rhel45)
+                		else:
+                    			print("Les processus consommant le plus de memoire SWAP sur le serveur %s sont" %env.host)
+                    			result = sudo(cmd)
+            		elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+                		rhel_version=find_os_distro_cbl()
+                		if rhel_version == "redhat4" or rhel_version == "redhat5":
+                    			print("Impossible de savoir quel processus consomme le plus de RAM sur RHEL 4 ou 5")
+                    			print("Les processus consommant le plus de memoire (vive + SWAP) sur le serveur %s sont" %env.host)
+                    			result = sudo(cmd_rhel45)
+                		elif rhel_version == "redhat6" or rhel_version == "redhat7":
+                    			print("Les processus consommant le plus de memoire SWAP sur le serveur %s sont" %env.host)
+                    			result = sudo(cmd)
+                		else:
+                    			puts(red("Impossible de reconnaitre de version de redhat utilisee"))
+                    			exit(1)
+            		else:
+                		puts(red("Distribution non reconnue"))
+                		exit(1)
+            		print(result)
+            		puts(green("La routine check_swap_usage s\'est terminee en succes"))
+        	except NetworkError as network_error:
+            		print(red("ERROR : %s" % (network_error)))
+
 			
 #############################################
 # author: cedric.bleschet@inserm.fr (2015)
