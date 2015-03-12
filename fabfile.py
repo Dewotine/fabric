@@ -22,6 +22,48 @@ from fabric.exceptions import *
 
 ################################################
 # author: cedric.bleschet@inserm.fr (2015)
+# Modification de find_os_distro
+# Renvoie la version de rhel
+################################################
+def find_os_distro_cbl():
+	if file_exists('/etc/redhat-release'):
+		ret = file_read('/etc/redhat-release')
+		if 'Red' or 'CentOS' in ret:
+			if command_check('/usr/bin/yum'):
+				if 'release 4' in ret:
+					puts ('RHEL4')
+					return "redhat4"
+				elif 'release 5.10' in ret:
+					puts ('RHEL5')
+					return "redhat5"
+				elif ('release 6.3' or 'release 6.5') in ret:
+					puts ('RHEL6')
+					return "redhat6"
+				elif 'release 7' in ret:
+					puts ('RHEL7')
+					return "redhat7"
+				else:
+					puts(red("Version de RHEL non reconnu"))
+	if file_exists('/etc/SuSE-release'):
+		ret = file_read('/etc/SuSE-release')
+		if 'SUSE' and '11' in ret:
+			if command_check('/usr/bin/zypper'):
+				sles_version = int(sudo('grep PATCHLEVEL /etc/SuSE-release | cut -d"=" -f2'))
+				if sles_version == 1:
+					return "sles11SP1"
+				elif sles_version == 2:
+					return "sles11SP2"
+				elif sles_version == 3:
+					return "sles11SP3"
+				else:
+					puts(red("Version de SLES non reconnu"))
+		elif 'SUSE' and '12' in ret:
+			if command_check('/usr/bin/zypper'):
+				return "sles12"
+
+
+################################################
+# author: cedric.bleschet@inserm.fr (2015)
 # La routine install_pkg permet d'installer un paquet
 # Si le nom du paquet n est pas passe en argument, il le demande
 ##############################################
@@ -125,29 +167,44 @@ def install_pkg(*pkg):
 # virtuelle sur le serveur 
 @task
 def check_swap_usage():
-	"""Cette routine permet de tester l\'usage de la memoire swap sur un serveur"""
-	tmp_file="/tmp/swap.txt" # Fichier servant à construire le message remonté par la routine
+	"""Cette routine permet d'obtenir le detail sur l\'usage de la memoire swap sur un serveur"""
+	tmp_file="/tmp/swap.txt" # Fichier servant a construire le message remonter la routine
 	osname="" # Distribution sur laquelle est executee la routine
-	
+	rhel_version = ""
+	sles_version = ""
+
 	# Commande pour les RHEL6, 7 et SLES 11 et 12
 	cmd="for file in /proc/*/status ; do awk '/VmSwap|Name/{printf $2 \" \" $3}END{ print \"\"}' $file; done | sort -k2 -n -r | grep kB| head -15"
-	# Commande Sur RHEL4 et 5, nous n'avons pas l'information de la mémoire SWAP. On indique la taille mémoire virtuelle (swap + reserved)
-	cmd_rhel45="for file in /proc/*/status ; do awk '/|VmSize|Name/{printf $2 " " $3}END{ print ""}' $file; done | grep kB | sort -k 3 -n"
-	with hide('output','running','warnings'), settings(warn_only=True):
+	# Commande Sur RHEL4 et 5, nous n'avons pas l'information de la memoire SWAP. On indique la taille memoire virtuelle (swap + reserved)
+	cmd_rhel45="for file in /proc/*/status ; do awk '/Uid|Tgid|VmSize|Name/{printf $2 \" \" $3}END{ print \"\"}' $file; done | grep kB | cut -d \" \" -f1,3,4 | sort -k2 -n -r |  head -15"
+	with hide('output','running','warnings'):
 		try :
 			osname = distrib_id()
 			if 'SLES' in osname:
-				sudo("echo 'Voici les principaux processus consommant le plus de memoire SWAP sur le serveur '" + env.host + ": > " + tmp_file)
-				sudo(cmd + ">> " + tmp_file)
+				sles_version = find_os_distro_cbl()
+				if sles_version == "sles11SP1":
+					print("Impossible de savoir quel processus consomme le plus de RAM sur SLES 11 SP1")
+					print("Les processus consommant le plus de memoire (vive + SWAP) sur le serveur %s sont" %env.host)
+					result = sudo(cmd_rhel45)
+				else:
+					print("Les processus consommant le plus de memoire SWAP sur le serveur %s sont" %env.host)
+					result = sudo(cmd)
 			elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-				sudo("echo 'Voici les principaux processus consommant le plus de memoire SWAP sur le serveur '" + env.host + ": > " + tmp_file)
-				sudo(cmd + ">> " + tmp_file)
+				rhel_version=find_os_distro_cbl()
+				if rhel_version == "redhat4" or rhel_version == "redhat5":
+					print("Impossible de savoir quel processus consomme le plus de RAM sur RHEL 4 ou 5")
+					print("Les processus consommant le plus de memoire (vive + SWAP) sur le serveur %s sont" %env.host)
+					result = sudo(cmd_rhel45)
+				elif rhel_version == "redhat6" or rhel_version == "redhat7":
+					print("Les processus consommant le plus de memoire SWAP sur le serveur %s sont" %env.host)
+					result = sudo(cmd)
+				else:
+					puts(red("Impossible de reconnaitre de version de redhat utilisee"))
+					return 1
 			else:
 				puts(red("Distribution non reconnue"))
-				exit(1)
-			result = sudo ("cat " + tmp_file)
-			sys.stdout.write(result+"\n")
-			sudo("rm -f " + tmp_file)
+				return 1
+			print(result)
 			puts(green("La routine check_swap_usage s\'est terminee en succes"))
 		except NetworkError as network_error:
 			print(red("ERROR : %s" % (network_error)))
