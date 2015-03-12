@@ -92,40 +92,44 @@ def install_pkg(*pkg):
 				puts(red("Aucun nom de paquet"))
 				return 1
 
-	# Envoie des commandes d'installation sur le serveur cible
-	try:
-		for packet in env["pkg"]:
-			with settings(warn_only=True):
-			#Verifie si le paquet est deja instale
-				result = sudo("rpm -qi " + packet)
-			if result.failed:
-				osname = distrib_id()
-				assert osname is not None
-				if 'SLES' in osname:
-					select_package('zypper')
-				elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-					select_package('yum')
-				else:
-					puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
-					return 1
-				# Installation du paquet
-				with settings(warn_only=True):
-					package_install(packet)
-					result = sudo("rpm -qi " + packet)
-				if result.failed:
-					package_clean()
-					with settings(warn_only=True):
-						package_install(packet)					
-						result2 = sudo("rpm -qi " + packet)
-					if result2.failed:
-						puts(red("Erreur : Le paquet %s n a pu etre installe sur le serveur %s" % (packet,env.host)))
-						return 3
-					else:
-						puts(green("Mise à jour du cache OK"))
-				else:
-					puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (packet,env.host)))
-			else:
-				puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (packet,env.host)))
+	        # Envoie des commandes d'installation sur le serveur cible
+		try:
+            		for packet in env["pkg"]:
+                		with settings(warn_only=True):
+                		#Verifie si le paquet est deja instale
+	                    		result = sudo("rpm -qi " + packet)
+                			if result.failed:
+                    				osname = distrib_id()
+                    				assert osname is not None
+                    				if 'SLES' in osname:
+                        				select_package('zypper')
+                    				elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+                        				select_package('yum')
+                    				else:
+                        				puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
+                        				return 1
+                				# Installation du paquet
+                    				try:
+                        				with settings(warn_only=True):
+                            					package_install(packet)
+                        				sudo("rpm -qi " + packet)
+                    				except:
+                        				# nettoie le cache et retente l installation
+                        				puts("2e tentative avec nettoyage du cache")
+                        				package_clean()
+                        				with settings(warn_only=True):
+                            					package_install(packet)
+                				# Verifie si le paquet a bien pu s installer
+                    				finally:
+                        				with settings(warn_only=True):
+                            					result = sudo("rpm -qi " + packet)
+                        				if result.failed:
+                            					puts(red("Erreur : Le paquet %s n\'a pu etre installe sur le serveur %s" % (packet,env.host)))
+                        					return 3
+                        				else:
+                            					puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (packet,env.host)))
+                			else:
+                    				puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (packet,env.host)))
         
 	# En cas de probleme de connexion au serveur cible
 	except NetworkError as network_error:
@@ -165,6 +169,7 @@ def install_pkg(*pkg):
 # pour determiner la consommation de memoire swap par process. Sur RHEL4 et 5, le champs VMSwap
 # n'est pas disponible. On utilise alors le champs VmSize qui donne l'utilisation de la mémoire
 # virtuelle sur le serveur 
+
 @task
 def check_swap_usage():
 	"""Cette routine permet d'obtenir le detail sur l\'usage de la memoire swap sur un serveur"""
@@ -208,6 +213,47 @@ def check_swap_usage():
 			puts(green("La routine check_swap_usage s\'est terminee en succes"))
 		except NetworkError as network_error:
 			print(red("ERROR : %s" % (network_error)))
+    	osname="" # Distribution sur laquelle est executee la routine
+    	rhel_version = ""
+    	sles_version = ""
+
+    	# Commande pour les RHEL6, 7 et SLES 11 et 12
+    	cmd="for file in /proc/*/status ; do awk '/VmSwap|Name/{printf $2 \" \" $3}END{ print \"\"}' $file 2 > /dev/null; done | sort -k2 -n -r | grep kB| head -15"
+     	#Commande Sur RHEL4 et 5, nous n'avons pas l'information de la memoire SWAP. On indique la taille memoire virtuelle (swap + reserved)
+    	cmd_rhel45="for file in /proc/*/status ; do awk '/Uid|Tgid|VmSize|Name/{printf $2 \" \" $3}END{ print \"\"}' $file 2> /dev/null; done | grep kB | cut -d \" \" -f1,3,4 | sort -k2 -n -r |  head -15"
+
+    	with hide('status','aborts','stdout','warnings','running','stderr'):
+        	try :
+            		osname = distrib_id()
+            		if 'SLES' in osname:
+                		sles_version = find_os_distro_cbl()
+                		if sles_version == "sles11SP1":
+                    			print("Impossible de savoir quel processus consomme le plus de RAM sur SLES 11 SP1")
+                    			print("Les processus consommant le plus de memoire (vive + SWAP) sur le serveur %s sont" %env.host)
+                    			result = sudo(cmd_rhel45)
+                		else:
+                    			print("Les processus consommant le plus de memoire SWAP sur le serveur %s sont" %env.host)
+                    			result = sudo(cmd)
+            		elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+                		rhel_version=find_os_distro_cbl()
+                		if rhel_version == "redhat4" or rhel_version == "redhat5":
+                    			print("Impossible de savoir quel processus consomme le plus de RAM sur RHEL 4 ou 5")
+                    			print("Les processus consommant le plus de memoire (vive + SWAP) sur le serveur %s sont" %env.host)
+                    			result = sudo(cmd_rhel45)
+                		elif rhel_version == "redhat6" or rhel_version == "redhat7":
+                    			print("Les processus consommant le plus de memoire SWAP sur le serveur %s sont" %env.host)
+                    			result = sudo(cmd)
+                		else:
+                    			puts(red("Impossible de reconnaitre de version de redhat utilisee"))
+                    			exit(1)
+            		else:
+                		puts(red("Distribution non reconnue"))
+                		exit(1)
+            		print(result)
+            		puts(green("La routine check_swap_usage s\'est terminee en succes"))
+        	except NetworkError as network_error:
+            		print(red("ERROR : %s" % (network_error)))
+
 			
 #############################################
 # author: cedric.bleschet@inserm.fr (2015)
@@ -245,24 +291,28 @@ def update_pkg(*pkg):
 		with hide('running','output','warnings'):
 			# Pour SLES
 			if 'SLES' in osname:
-				sudo ("zypper --non-interactive refresh")
-				for packet in env["pkg"]:
-					update_result = sudo("zypper --non-interactive update " + packet)
-					if update_result.find("Error") == 0 :
-						puts(red("Une erreur s\'est produite pendant la mise du paquet %s a sur le serveur %s" % (packet,env.host)))
-						return 2
-					else:
-						puts(green("Le paquet %s a ete mis a jour sur le serveur SLES %s" % (packet,env.host)))
+				try:
+					sudo ("zypper --non-interactive refresh")
+					for packet in env["pkg"]:
+						update_result = sudo("zypper --non-interactive update " + packet)
+						if update_result.find("Error") == 0 :
+							puts(red("Une erreur s\'est produite pendant la mise du paquet %s a sur le serveur %s" % (packet,env.host)))
+							return 2
+						else:
+							puts(green("Le paquet %s a ete mis a jour sur le serveur SLES %s" % (packet,env.host)))
+				except SystemExit:
+		                	puts(red("Une erreur s\'est produite en tentant de metre a jour le serveur SLES %s" % env.host))
 			# Pour Redhat
 			elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-				sudo ("yum clean all")
-				for packet in env["pkg"]:
-					update_result = sudo("yum -y update " + packet)
-					if update_result.find("Error") == 0:
-						puts(red("Une erreur s\'est produite pendant la mise a jour du paquet %s sur le serveur RHEL %s")% (packet,env.host))
-						return 3
-					else:
-						puts(green("Le paquet %s a ete mis a jour sur le serveur %s" % (packet,env.host)))
+				try:
+					sudo ("yum clean all")
+					for packet in env["pkg"]:
+						try:
+							sudo("yum -y update " + packet)
+						except SystemExit:
+							puts(red("Une erreur s\'est produite pendant la mise a jour du paquet %s sur le serveur RHEL %s")% (packet,env.host))
+						else:
+							puts(green("Le paquet %s a ete mis a jour sur le serveur %s" % (packet,env.host)))
 			else:
 				puts(red("Impossible de reconnaitre le type de serveur"))
 				return 1
