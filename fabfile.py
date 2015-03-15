@@ -16,7 +16,6 @@ from fabtools.system import * # pour distrib_id
 #from fabric.exceptions import NetworkError
 from fabric.exceptions import *
 import os
-import glob
 
 ################################################
 #FUNCTION SET
