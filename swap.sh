@@ -8,20 +8,25 @@ MEMORY_TYPE=""
 MEMORY=""
 PID=""
 VRAC=""
+LINE=15
 
 # Manage the script argument
 if [ $# -ne 0 ]
 then
         while [ -n "$1" ] ; do
                 case "$1" in
-                        --m*|-m)
+                        --memory|-m)
                                 MEMORY_TYPE=$2
                                 shift
                                 ;;
+			--line|-l)
+				LINE=$2
+				shift
+				;;				
                         *)
                                 echo "A memory type must be specified with the -m"
                                 echo "Ex : swap.sh -m VmSize" => RAM
-                                echo "Ex : swap.sh -m SWAP" => SWAP
+                                echo "Ex : swap.sh -m SWAP" => FULL
                                 exit 1
                                 ;;
                         esac
@@ -30,7 +35,7 @@ then
 else
         echo "A memory type must be specified with the -m"
         echo "Ex : swap.sh -m VmSize" => RAM
-        echo "Ex : swap.sh -m VmSwap" => SWAP
+        echo "Ex : swap.sh -m VmSwap" => FULL
         exit 1
 fi
 
@@ -47,7 +52,7 @@ do
                         USER_ID=`echo $VRAC | cut -d " " -f2`
                         USER=`getent passwd $USER_ID | cut -d":" -f1`
                         MEMORY=`echo $VRAC | cut -d " " -f3`
-                        echo "${NAME}|${PID}|${USER}|${MEMORY}"
+                        #echo "${NAME}|${PID}|${USER}|${MEMORY}"
                 fi
         elif [ $MEMORY_TYPE == "VmSwap" ]
         then
@@ -59,9 +64,11 @@ do
                         USER_ID=`echo $VRAC | cut -d " " -f2`
                         USER=`getent passwd $USER_ID | cut -d":" -f1`
                         MEMORY=`echo $VRAC | cut -d " " -f3`
-                        echo "${NAME}|${PID}|${USER}|${MEMORY}"
+                        #echo "${NAME}|${PID}|${USER}|${MEMORY}"
                 fi
         fi
-done < <(ls /proc/*/status) | sort -t"|" -k4 -n -r | head -15
+        printf "%-15s | %-5s | %-10s | %s"  ${NAME} ${PID} ${USER} ${MEMORY}
+        echo ""
+done < <(ls /proc/*/status) | sort -t"|" -k4 -n -r | head -$LINE
 
 exit 0

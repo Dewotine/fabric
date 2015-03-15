@@ -175,7 +175,7 @@ def install_pkg(*pkg):
 # virtuelle sur le serveur
 ##############################################
 @task
-def check_mem_usage(memory_type_arg=None):
+def check_mem_usage(memory_type_arg=None, nbr_line=15):
     """Check the memory usage (FULL or SWAP) of a server. It takes the memory type in argument"""
     osname="" # Distribution sur laquelle est executee la routine
     rhel_version = "" # RHEL version
@@ -214,11 +214,8 @@ def check_mem_usage(memory_type_arg=None):
             # call the distant script with the arg VmSize to check the memory usage (SWAP +RAM)
             if memory_type == "FULL":
                 try:
-                    result_script = sudo(script_remote_file + "  -m VmSize")
-                    print("The eager processes in memory on %s are (Nom|PID|User|Memory in KB): " %env.host)
-                    print("------------------------------")
-                    print("Nom |PID  |User  |Memory in KB")
-                    print("------------------------------")
+                    result_script = sudo(script_remote_file + "  -m VmSize -l " + str(nbr_line))
+                    print("The eager processes in memory on %s are : " %env.host)
                 except:
                     puts(red("An error occured during the procesing of the check memory script on %s!" % env.host))
             # If it is the SWAP memory we want to check
@@ -230,46 +227,37 @@ def check_mem_usage(memory_type_arg=None):
                     sles_version = find_os_distro_cbl()
                     if sles_version == "sles11SP1":
                         try:
-                            result_script = sudo(script_remote_file + "  -m VmSize")
+                            result_script = sudo(script_remote_file + "  -m VmSize -l " + str(nbr_line))
                             print(magenta(("Can not check swap memory on sles11 sp1, will display the memory usage instead")))
-                            print("------------------------------")
                             print("The eager processes in memory on %s are : " %env.host)
-                            print("------------------------------")
-                            print("Nom |PID  |User  |Memory in KB")
-                            print("------------------------------")
                         except:
                             puts(red("An error occured during the procesing of the check memory script on the SLES SP1 server %s!" % env.host))
+                            return 3
                     else:
                         try:
-                            result_script = sudo(script_remote_file + "  -m VmSwap")
+                            result_script = sudo(script_remote_file + "  -m VmSwap -l " + str(nbr_line))
                             print("The eager processes in SWAP memory on %s are :" %env.host)
-                            print("------------------------------")
-                            print("Nom |PID  |User  |Memory in KB")
-                            print("------------------------------")
                         except:
                             print(red("An error occured during the procesing of the check memory script on the SLES server %s!" % env.host))
+                            return 3
 
                 elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
                     rhel_version=find_os_distro_cbl()
                     if rhel_version == "redhat4" or rhel_version == "redhat5":
                         try:
-                            result_script = sudo(script_remote_file + "  -m VmSize")
+                            result_script = sudo(script_remote_file + "  -m VmSize -l " + str(nbr_line))
                             print(magenta(("Can not check swap memory on RHEL4 or RHEL5, will display the memory usage instead")))
                             print("The eager processes in memory on %s are : " %env.host)
-                            print("------------------------------")
-                            print("Nom |PID  |User  |Memory in KB")
-                            print("------------------------------")
                         except:
                             print(red("An error occured during the procesing of the check memory script on the RHEL4 or RHEL5 server %s!" % env.host))
+                            return 3
                     elif rhel_version == "redhat6" or rhel_version == "redhat7":
                         try:
-                            result_script = sudo(script_remote_file + "  -m VmSwap")
+                            result_script = sudo(script_remote_file + "  -m VmSwap -l " + str(nbr_line))
                             print("The eager processes in SWAP memory on %s are :" %env.host)
-                            print("------------------------------")
-                            print("Nom |PID  |User  |Memory in KB")
-                            print("------------------------------")
                         except:
                             print(red("An error occured during the procesing of the check memory script on the RHEL6 or 7 server %s!" % env.host))
+                            return 3
                     else:
                         print(red("Could not recognized the RHEL version used!!"))
                         return 4
@@ -279,10 +267,12 @@ def check_mem_usage(memory_type_arg=None):
             else:
                     print(red("Incorrect script argument"))
                     return 5
-
             # Display the result of the script
+            print("--------------------------------------------------")
+            print("Nom             |PID    |User        |Memory in KB")
+            print("--------------------------------------------------")
             print(result_script)
-            print("----------------------------")
+            print("--------------------------------------------------")
             # Delete the distant script
             sudo("rm -f " + script_remote_file)
             print(green("check_mem_usage finished in success on server %s" % env.host))
