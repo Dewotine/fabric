@@ -25,8 +25,8 @@ then
 				;;				
                         *)
                                 echo "A memory type must be specified with the -m"
-                                echo "Ex : swap.sh -m VmSize" => RAM
-                                echo "Ex : swap.sh -m SWAP" => FULL
+                                echo "Ex : swap.sh -m VmSize" => FULL
+                                echo "Ex : swap.sh -m SWAP" => SWAP
                                 exit 1
                                 ;;
                         esac
@@ -34,8 +34,8 @@ then
         done
 else
         echo "A memory type must be specified with the -m"
-        echo "Ex : swap.sh -m VmSize" => RAM
-        echo "Ex : swap.sh -m VmSwap" => FULL
+        echo "Ex : swap.sh -m VmSize" => FULL
+        echo "Ex : swap.sh -m VmSwap" => SWAP
         exit 1
 fi
 
