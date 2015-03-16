@@ -46,28 +46,21 @@ do
         then
                 if [ -e $file ]
                 then
-                        VRAC=`awk '/Uid|VmSize|Name/{printf $2 " " $3}END{ print " " }' $file`
-                        NAME=`echo $VRAC | cut -d " " -f1`
-                        PID=`echo $file | cut -d "/" -f3 2> /dev/null`
-                        USER_ID=`echo $VRAC | cut -d " " -f2`
-                        USER=`getent passwd $USER_ID | cut -d":" -f1`
-                        MEMORY=`echo $VRAC | cut -d " " -f3`
-                        #echo "${NAME}|${PID}|${USER}|${MEMORY}"
+                        VRAC=`awk '/Uid|VmSize|Name/{printf $2 " "}END{ print ""}' $file`
                 fi
         elif [ $MEMORY_TYPE == "VmSwap" ]
         then
                 if [ -e $file ]
                 then
-                        VRAC=`awk '/Uid|VmSwap|Name/{printf $2 " " $3}END{ print " " }' $file`
-                        NAME=`echo $VRAC | cut -d " " -f1`
-                        PID=`echo $file | cut -d "/" -f3 2> /dev/null`
-                        USER_ID=`echo $VRAC | cut -d " " -f2`
-                        USER=`getent passwd $USER_ID | cut -d":" -f1`
-                        MEMORY=`echo $VRAC | cut -d " " -f3`
-                        #echo "${NAME}|${PID}|${USER}|${MEMORY}"
+                        VRAC=`awk '/Uid|VmSwap|Name/{printf $2 " "}END{ print ""}' $file`
                 fi
         fi
-        printf "%-15s | %-5s | %-10s | %s"  ${NAME} ${PID} ${USER} ${MEMORY}
+        NAME=`echo $VRAC | cut -d " " -f1`
+        PID=`echo $file | cut -d "/" -f3 2> /dev/null`
+        USER_ID=`echo $VRAC | cut -d " " -f2`
+        USER=`getent passwd $USER_ID | cut -d":" -f1`
+        MEMORY=`echo $VRAC | cut -d " " -f3`
+        printf "%-15s | %-5s | %-10s | %s" ${NAME} ${PID} ${USER} ${MEMORY}
         echo ""
 done < <(ls /proc/*/status) | sort -t"|" -k4 -n -r | head -$LINE
 
