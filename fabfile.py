@@ -380,57 +380,62 @@ def bash_custom():
     server_bashrc = "" # Server Path to bashrc file (unknown yet)
     osname = "" # Server OS (SLES or RHEL)
 
+    # Test network connection to the targeted server
     try:
-        # Add the content to /etc/profile
-        try:
-            with open(profile) as file_des:
-	            content = file_des.read()
-        except IOError:
-            print (red("Error: can\'t find file %s or read data") %profile)
-            return 1
-        else:
-            fabric.contrib.files.append(server_profile, content, use_sudo=True, partial=False, escape=True, shell=False)
-        
-        # Set the server_bashrc in function of the distribution
-        try:
-            osname = distrib_id()
-            print(blue("the OS detected is %s" % osname))
-            if osname in ['SLES', 'SUSE Linux']:
-                server_bashrc = "/etc/bash.bashrc"
-            elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-                server_bashrc = "/etc/bashrc"
+        with hide('status','aborts','stdout','warnings','running','stderr'):
+            # Read the file profile and put it in the string content
+            try:
+                with open(profile) as file_des:
+                    content = file_des.read()
+            except IOError:
+                print (red("Error: can\'t find file %s or read data") %profile)
+                return 1
             else:
-                print(red("Could not recognized the OS version used : %s !!" % osname))
-                return 2
-        except: 
-            print(red("An error occured !!" % osname))
-            return 2
-        #add content to bashrc (rhel) or bash.bashrc (sles)
-        try:
-            with open(bashrc) as file_des:
-	            content2 = file_des.read()
-        except IOError:
-            print (red("Error: can\'t find file %s or read data") %bashrc)
-            return 3
-        else:
-            fabric.contrib.files.append(server_bashrc, content2, use_sudo=True, partial=False, escape=True, shell=False)
-        
-        # Configure .bash_history
-        try:
-            sudo("mkdir -p /home/sys-infoger/Scripts/archive_history/")
-            sudo("touch /home/sys-infoger/Scripts/archive_history/.bash_history")
-            sudo("chmod 666 /home/sys-infoger/Scripts/archive_history/.bash_history")
-            sudo("chmod +x /home/sys-infoger/")
-        except:
-            print (red("Could not configure bash_history") %bashrc)
-            return 4
+                # Add the string content into /etc/profile
+                try:
+                    fabric.contrib.files.append(server_profile, content, use_sudo=True)
+                except:
+                    print(red("Could not add customisation to the file : %s !! on %s " % (server_profile, env.host)))
+                    return 2
+            # Set the server_bashrc in function of the distribution
+            try:
+                osname = distrib_id()
+                print(blue("the OS detected is %s" % osname))
+                if osname in ['SLES', 'SUSE Linux']:
+                    server_bashrc = "/etc/bash.bashrc"
+                elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+                    server_bashrc = "/etc/bashrc"
+                else:
+                    print(red("Could not recognized the OS version used : %s !!" % osname))
+                    return 3
+            except: 
+                print(red("An error occured !!" % osname))
+                return 3
+            # Read the file bashrc and put it in the string content2
+            try:
+                with open(bashrc) as file_des:
+                    content2 = file_des.read()
+            except IOError:
+                print (red("Error: can\'t find file %s or read data") %bashrc)
+                return 4
+            else:
+                #add content to bashrc (rhel) or bash.bashrc (sles)
+                try:
+                    fabric.contrib.files.append(server_bashrc, content2, use_sudo=True)
+                except:
+                    print(red("Could not add customisation to the file : %s !! on %s " % (server_profile, env.host)))
+                    return 5
+            # Configure .bash_history
+            try:
+                sudo("mkdir -p /home/sys-infoger/Scripts/archive_history/")
+                sudo("touch /home/sys-infoger/Scripts/archive_history/.bash_history")
+                sudo("chmod 666 /home/sys-infoger/Scripts/archive_history/.bash_history")
+                sudo("chmod +x /home/sys-infoger/")
+            except:
+                print (red("Could not configure bash_history") %bashrc)
+                return 6
+            print(green("bash_custom finished in success on server %s" % env.host))
     except NetworkError as network_error:
             print(red("ERROR : %s" % (network_error)))
-
-
-
-
-
-
 
 
