@@ -15,6 +15,7 @@ from fabric.colors import *
 from fabtools.system import * # pour distrib_id
 #from fabric.exceptions import NetworkError
 from fabric.exceptions import *
+from fabric.contrib import * # (pour la méthode append)
 import os
 
 ################################################
@@ -65,79 +66,138 @@ def find_os_distro_cbl():
 
 ################################################
 # author: cedric.bleschet@inserm.fr (2015)
+# La routine install_pkg permet d'installer un ou plusieurs paquets.
+# Si le nom du paquet n est pas passe en argument, il le demande.
+##############################################
+@task
+def install_pkg(*pkg):
+    """ Install one or several packet passed as parameter. If no package name is indicated, the script will ask for one"""
+    osname = ''	# Systeme d'exploitation de la machine cible
+
+    # Verification du nom de paquet
+    with hide('status','aborts','stdout','warnings','running','stderr'):
+        try:
+            if pkg:
+                env["pkg"] = pkg
+            else:
+                raise ValueError("")
+                puts(yellow("No package name specified"))
+        except ValueError:
+            try:
+                env["pkg"] = prompt("Which package should be installed")
+                if not env["pkg"]:
+                    raise ValueError
+            except ValueError:
+                puts(red("Still no package name specified!!"))
+                return 1
+   
+        # Envoie des commandes d'installation sur le serveur cible 
+        try:
+            for packet in env["pkg"]:
+                with settings(warn_only=True):
+                #Verifie si le paquet est deja instale
+                    result = sudo("rpm -qi " + packet)
+                if result.failed:
+                    osname = distrib_id()
+                    assert osname is not None
+                    if 'SLES' or 'SUSE Linux' in osname:
+                        select_package('zypper')
+                    elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+                        select_package('yum')
+                    else:
+                        puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
+                        return 1
+                    # Installation du paquet
+                    try:
+                        with settings(warn_only=True):
+                            package_install(packet)
+                        sudo("rpm -qi " + packet)
+                    except:
+                        # nettoie le cache et retente l installation
+                        puts("2e tentative avec nettoyage du cache")
+                        package_clean()
+                        with settings(warn_only=True):
+                            package_install(packet)
+                    # Verifie si le paquet a bien pu s installer
+                    finally:
+                        with settings(warn_only=True):
+                            result = sudo("rpm -qi " + packet)
+                        if result.failed:
+                            puts(red("Erreur : Le paquet %s n\'a pu etre installe sur le serveur %s" % (packet,env.host)))
+                            return 3
+                        else:
+                            puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (packet,env.host))) 
+                else:
+                    puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (packet,env.host)))
+        # En cas de probleme de connexion au serveur cible           
+        except NetworkError as network_error:
+            print(red("ERROR : %s" % (network_error)))
+	    return 0
+
+#############################################
+# author: cedric.bleschet@inserm.fr (2015)
 # La routine install_pkg permet d'installer un paquet
 # Si le nom du paquet n est pas passe en argument, il le demande
 ##############################################
 @task
-def install_pkg(*pkg):
-	""" Routine pour l installation d'un ou plusieurs paquets. Elle prend en argument le nom du paquet. Si rien n'est saisie comme argument, elle redemande un nom de paquet"""
-	osname = '' # Systeme d'exploitation de la machine cible
-	result='' # resultat de la premiere tentative d'installation
-	result2='' # resultat de la seconde tentative d'installation
-	#env.abort_on_prompts = True
+def update_pkg(*pkg):
+    """ Routine pour la mise a jour d\'un ou plusieurs paquets. Elle prend en argument une liste de paquets.
+    Si rien n'est saisie comme argument, elle redemande un nom de paquet"""
+    osname = '' # Systeme d'exploitation de la machine cible
+    update_result = '' # Variable utilise pour stocker le texte lors d'une mise a jour   
+    
+    # Verification du nom de paquet
+    try:
+        if pkg:
+            env["pkg"] = pkg
+        else:
+            raise ValueError
+    except ValueError:
+        try:
+            env["pkg"] = prompt("Which packet should be updated?")
+            if not env["pkg"]:
+                raise ValueError
+        except ValueError:
+            puts(red("No package name!!"))
+            return 1
+    #Connexion au serveur et mis en jour du paquet en fonction de la distribution (SLES ou RHEL)
+    try:
+        osname = distrib_id()
+        assert osname is not None
+        with hide('status','aborts','stdout','warnings','running','stderr'):
+            # Pour SLES
+            if 'SLES' in osname:
+                try:
+                    sudo ("zypper --non-interactive refresh")
+                    for packet in env["pkg"]:
+                        update_result = sudo("zypper --non-interactive update " + packet)
+                        if (update_result.find("Error") == -1) & (update_result.find("error") == -1):                           
+                            puts(green("The package %s has been updated on the SLES server %s" % (packet,env.host)))
+                        else: 
+                            puts(red("An error occured during the update of %s on %s" % (packet,env.host)))
+                            return 2
+                except SystemExit:
+                    puts(red("An error occured during while trying to update the SLES server %s" % env.host))
 
-	# Verification du nom de paquet
-	with hide('running','output','warnings'):
-		try:
-			if pkg:
-				env["pkg"] = pkg
-			else:
-				raise ValueError("Aucun nom de paquet specifie")
-				puts(yellow("Aucun nom de paquet specifie en argument"))
-		except ValueError:
-			try:
-				env["pkg"] = prompt("Quel est le nom du paquet a installer? ")
-				if not env["pkg"]:
-					raise ValueError
-			except ValueError:
-				puts(red("Aucun nom de paquet"))
-				return 1
+            # Pour Redhat
+            elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+                try:
+                    sudo ("yum clean all")
+                    for packet in env["pkg"]:
+                        try:
+                            sudo("yum update -y " + packet)
+                        except SystemExit:
+                            puts(red("An error occured during the update of %s a on %s" % (packet,env.host)))
+                        else:
+                            puts(green("%s has been updated on the server %s" % (packet,env.host))) 
+                except SystemExit:
+                    puts(red("An error occured while trying to update information on the deposite on the RHEL server %s" % env.host))
+            else: 
+                puts(red("An error occured during the update of %s on the server %s" % (env["pkg"],env.host)))
+                return 1
+    except NetworkError as network_error:
+        print(red("ERROR : %s" % (network_error)))
 
-	        # Envoie des commandes d'installation sur le serveur cible
-		try:
-            		for packet in env["pkg"]:
-                		with settings(warn_only=True):
-                		#Verifie si le paquet est deja instale
-	                    		result = sudo("rpm -qi " + packet)
-                			if result.failed:
-                    				osname = distrib_id()
-                    				assert osname is not None
-                    				if 'SLES' in osname:
-                        				select_package('zypper')
-                    				elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-                        				select_package('yum')
-                    				else:
-                        				puts(red("La distribution %s n\'est pas reconnue sur le serveur %s!!!!!" % (osname,env.host)))
-                        				return 1
-                				# Installation du paquet
-                    				try:
-                        				with settings(warn_only=True):
-                            					package_install(packet)
-                        				sudo("rpm -qi " + packet)
-                    				except:
-                        				# nettoie le cache et retente l installation
-                        				puts("2e tentative avec nettoyage du cache")
-                        				package_clean()
-                        				with settings(warn_only=True):
-                            					package_install(packet)
-                				# Verifie si le paquet a bien pu s installer
-                    				finally:
-                        				with settings(warn_only=True):
-                            					result = sudo("rpm -qi " + packet)
-                        				if result.failed:
-                            					puts(red("Erreur : Le paquet %s n\'a pu etre installe sur le serveur %s" % (packet,env.host)))
-                        					return 3
-                        				else:
-                            					puts(green("Le paquet %s a pu ete installe sur le serveur %s" % (packet,env.host)))
-                			else:
-                    				puts(yellow("Le paquet %s est deja installe sur le serveur %s" % (packet,env.host)))
-        
-		# En cas de probleme de connexion au serveur cible
-		except NetworkError as network_error:
-			print(red("ERROR : %s" % (network_error)))
-			return 4
-
-	return 0
 
 #@task
 #def setup_postfix(pkg=None):
@@ -165,6 +225,33 @@ def install_pkg(*pkg):
 
 
 #	file_update(postfix_conf, lambda mon_fichier:mon_fichier.replace(old_line,new_line))
+
+# https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/5/html/Tuning_and_Optimizing_Red_Hat_Enterprise_Linux_for_Oracle_9i_and_10g_Databases/sect-Oracle_9i_and_10g_Tuning_Guide-Swap_Space-Checking_Swap_Space_Size_and_Usage.html
+@task
+def adjust_swap_usage(new_swap_size_arg=None):
+    """ Adjust the SWAP size considering the SPV0033xx document. The size if calaculated in function of the amount of RAM. Memory sizes are given in Gio"""
+    swap_size = -1
+    tmp_new_swap_size = ""
+    ram_size = -1
+    swap_partition="/dev/mapper/rootvg-swaplv"
+
+    try:
+        swap_size = sudo("awk '$1 == \"SwapTotal:\" {print $2}' /proc/meminfo")
+        ram_size = sudo("free -k | awk '$1==\"Mem:\" {print $2}'")
+
+        puts("swap size : %s" % swap_size)
+
+        sudo("swapoff %s" % swap_partition)
+        sudo("lvresize %s -L %s" % (swap_partition, swap_size))
+        sudo ("mkswap %s" %swap_partition)
+        sudo("swapon %s" % swap_partition)
+
+#        lvresize /dev/VolGroup00/LogVol01 -L 768M 
+#        swapon /dev/VolGroup00/LogVol01
+
+    except NetworkError as network_error:
+        print(red("ERROR : %s" % (network_error)))
+    
 
 ################################################
 # author: cedric.bleschet@inserm.fr (2015)
@@ -222,7 +309,7 @@ def check_mem_usage(memory_type_arg=None, nbr_line=15):
             # call the distant script with the arg VmSwap to check SWAP
             elif memory_type == "SWAP":
                 osname = distrib_id()
-                if 'SLES' in osname:
+                if 'SLES' or 'SUSE Linux' in osname:
                     sles_version = find_os_distro_cbl()
                     if sles_version == "sles11SP1":
                         try:
@@ -279,69 +366,71 @@ def check_mem_usage(memory_type_arg=None, nbr_line=15):
         except NetworkError as network_error:
             print(red("ERROR : %s" % (network_error)))
             
-
-#############################################
+################################################
 # author: cedric.bleschet@inserm.fr (2015)
-# La routine install_pkg permet d'installer un paquet
-# Si le nom du paquet n est pas passe en argument, il le demande
+# La routine bash_custom() 
 ##############################################
 @task
-def update_pkg(*pkg):
-    """ Routine pour la mise a jour d\'un ou plusieurs paquets. Elle prend en argument une liste de paquets.
-    Si rien n'est saisie comme argument, elle redemande un nom de paquet"""
-    osname = '' # Systeme d'exploitation de la machine cible
-    update_result = '' # Variable utilise pour stocker le texte lors d'une mise a jour
-# Verification du nom de paquet
-    try:
-        if pkg:
-            env["pkg"] = pkg
-        else:
-            raise ValueError
-    except ValueError:
-        try:
-            env["pkg"] = prompt("Which packet should be updated?")
-            if not env["pkg"]:
-                raise ValueError
-        except ValueError:
-            puts(red("Aucun nom de paquet!"))
-            return 1
-                
-    #Connexion au serveur et mis en jour du paquet en fonction de la distribution (SLES ou RHEL)
-    try:
-        osname = distrib_id()
-        assert osname is not None
-        with hide('running','output','warnings'):
-            # Pour SLES
-            if 'SLES' in osname:
-                try:
-                    sudo ("zypper --non-interactive refresh")
-                    for packet in env["pkg"]:
-                        update_result = sudo("zypper --non-interactive update " + packet)
-                        if update_result.find("Error") == 0 :
-                            puts(red("Une erreur s\'est produite pendant la mise du paquet %s a sur le serveur %s" % (packet,env.host)))
-                            return 2
-                        else: 
-                            puts(green("Le paquet %s a ete mis a jour sur le serveur SLES %s" % (packet,env.host)))
-                except SystemExit:
-                    puts(red("Une erreur s\'est produite en tentant de metre a jour le serveur SLES %s" % env.host))
-            # Pour Redhat
-            elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
-                try:
-                    sudo ("yum clean all")
-                    for packet in env["pkg"]:
-                        try:
-                            sudo("yum update -y " + packet)
-                        except SystemExit:
-                            puts(red("Une erreur s\'est produite pendant la mise du paquet %s a sur le serveur %s" % (packet,env.host)))
-                        else:
-                             puts(green("Le paquet %s a ete mis a jour sur le serveur SLES %s" % (packet,env.host))) 
-                except SystemExit:
-                    puts(red("Une erreur s\'est produite en tentant de metre a jour les informations sur les depots sur le serveur RHEL %s" % env.host))
-            else: 
-                puts(red("Une erreur s\'est produite pendant la mise du paquet %s a sur le serveur %s" % (env["pkg"],env.host)))
-                return 1
+def bash_custom():
+    profile = "profile.txt" # Path to the section that should be added in the server's /etc/profile'
+    content = "" # A string with the content of profile.txt file
+    content2 = "" # A string with the content of bashrc.txt file
+    server_profile = "/etc/profile" # Server Path to profile file
+    bashrc = "bashrc.txt" # Path to the section that should be added in the server's bashrc'
+    server_bashrc = "" # Server Path to bashrc file (unknown yet)
+    osname = "" # Server OS (SLES or RHEL)
 
+    try:
+        # Add the content to /etc/profile
+        try:
+            with open(profile) as file_des:
+	            content = file_des.read()
+        except IOError:
+            print (red("Error: can\'t find file %s or read data") %profile)
+            return 1
+        else:
+            fabric.contrib.files.append(server_profile, content, use_sudo=True, partial=False, escape=True, shell=False)
+        
+        # Set the server_bashrc in function of the distribution
+        try:
+            osname = distrib_id()
+            print(blue("the OS detected is %s" % osname))
+            if osname in ['SLES', 'SUSE Linux']:
+                server_bashrc = "/etc/bash.bashrc"
+            elif osname in ['RedHatEnterpriseServer','RedHatEnterpriseES','RedHatEnterpriseAS','CentOS']:
+                server_bashrc = "/etc/bashrc"
+            else:
+                print(red("Could not recognized the OS version used : %s !!" % osname))
+                return 2
+        except: 
+            print(red("An error occured !!" % osname))
+            return 2
+        #add content to bashrc (rhel) or bash.bashrc (sles)
+        try:
+            with open(bashrc) as file_des:
+	            content2 = file_des.read()
+        except IOError:
+            print (red("Error: can\'t find file %s or read data") %bashrc)
+            return 3
+        else:
+            fabric.contrib.files.append(server_bashrc, content2, use_sudo=True, partial=False, escape=True, shell=False)
+        
+        # Configure .bash_history
+        try:
+            sudo("mkdir -p /home/sys-infoger/Scripts/archive_history/")
+            sudo("touch /home/sys-infoger/Scripts/archive_history/.bash_history")
+            sudo("chmod 666 /home/sys-infoger/Scripts/archive_history/.bash_history")
+            sudo("chmod +x /home/sys-infoger/")
+        except:
+            print (red("Could not configure bash_history") %bashrc)
+            return 4
     except NetworkError as network_error:
-        print(red("ERROR : %s" % (network_error)))
+            print(red("ERROR : %s" % (network_error)))
+
+
+
+
+
+
 
 
