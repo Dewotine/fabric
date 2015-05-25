@@ -517,9 +517,8 @@ def create_user(name = None, role = None):
     new_access_line = "" # Line to add in the access.conf file
     encrypted_passwd = "$6$.sZSzpsA$CtlJLDOkIJrABp8Tc4c1moFV0P3Hqe/u1YAf1csSbr6notlQPtCVYBKTKme5gm8d1VTO7QAiWMmWQlvARVva8/"
 
-    
     try:
-        with hide('aborts'):
+        with hide('status','aborts','stdout','warnings','running','stderr'):
             #Get the arguments
             if name is None :
                 name = raw_input("Enter the user name :")
@@ -571,7 +570,7 @@ def create_user(name = None, role = None):
                             lambda access_content:access_content.replace\
                             (last_access_line,new_access_line))
                         fabric.contrib.files.append(access_file, \
-                            last_access_line, use_sudo=True, partial=False, escape=True, shell=False)
+                            last_access_line, use_sudo=True, partial=False)
                     except:
                         print(red("Can not update %s " % access_file))
                         return 3
