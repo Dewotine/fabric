@@ -17,6 +17,7 @@ from fabtools.system import * # pour distrib_id
 from fabric.exceptions import *
 from fabric.contrib import * # (pour la méthode append)
 import os
+import re
 
 ################################################
 #FUNCTION SET
@@ -432,10 +433,158 @@ def bash_custom():
                 sudo("chmod 666 /home/sys-infoger/Scripts/archive_history/.bash_history")
                 sudo("chmod +x /home/sys-infoger/")
             except:
-                print (red("Could not configure bash_history") %bashrc)
+                print(red("Could not configure bash_history") %bashrc)
                 return 6
             print(green("bash_custom finished in success on server %s" % env.host))
     except NetworkError as network_error:
             print(red("ERROR : %s" % (network_error)))
 
+################################################
+# author: cedric.bleschet@inserm.fr (05/26/2015)
+# The script check_pam_sshaccess() attempts to detect if the ssh access is restricted
+# via a PAM module. To do so it looks in the file pam_file which is set to "etc/pam.d/sshd"
+# by default and looks for the string pam_access.so
+# Argument : pam_file = Location of the PAM file for ssh (/etc/pam.d/sshd by default)
+# Return Value : A boolean which indicates whether or not the PAM module is activated
+##############################################
+@task
+def check_pam_sshaccess(pam_file = "/etc/pam.d/sshd"):
+    """Check the activation of the PAM module to restrict ssh access (access.conf)"""
+    researched_string = "pam_access.so" # The string researched in the pam_file 
+    check_pam_return = False # The return value of this script 
+    pam_content = "" # Content of the PAM file
+
+    # Check the network access to the server
+    try:
+        with hide('status','aborts','stdout','warnings','running','stderr'):
+            # Try to read the file pam_file and put its content into pam_content
+            try:
+                pam_content = file_read(pam_file)
+            except:
+                print(red("Could not read %s" % (pam_file)))
+                return -1
+            #Look for the researched_string in pam_content. -1 means not found
+            if pam_content.find(researched_string) == -1:
+                print(red("Error : String %s not found in %s" \
+                    % (researched_string, pam_file)))
+                check_pam_return = False
+            else:
+                print(green("String %s found in %s" % (researched_string, pam_file)))
+                check_pam_return = True
+    except NetworkError as network_error:
+            print(red("ERROR : %s" % (network_error)))
+    return(check_pam_return)
+
+@task
+def detect_part(device = "/dev/sdb"):
+    """Function to list the patitions used in /dev/sdb"""
+    fstab_file = "/etc/fstab"
+    fstab_list = []
+    appli_vg = "applivg"
+
+    try:
+        with hide('status','aborts','stdout','warnings','running','stderr'):
+            # Vérifier si /dev/sdb existe
+            # Si oui vérifier le type de /dev/sdb (BTRFS ou LVM)
+            fstab_content = file_read(fstab_file)
+            fstab_list = fstab_content.split("\n")
+            print(fstab_list)
+
+    except NetworkError as network_error:
+            print(red("ERROR : %s" % (network_error)))
+@task
+def create_user(name = None, role = None):
+    """Add user on the hostname, add group staff if not created, add the target user to staff group.
+
+    Keyword arguments:
+    name -- (string) name of the user which will be created on the target
+    role -- (string) user role : nominative = real name or name used by SSHGate (Ex cpiapg)
+                                 software = named used to control the software or database FS
+    Author: romain.dagnelie@inserm.fr
+            updated by cedric.bleschet
+    History: 2015 - Creation
+             05/26/2015 - PAM, access.conf and add user role
+    """
+    user_result = "" # Variable used to check how the user was created
+    user_list = [] # List used to check if the user already exists
+    passwd_content = "" # Content of the "/etc/passwd" on the server 
+    pwd_file = "/etc/passwd" # Full path to the file which manages users
+    access_file = "/etc/access.conf" # Full path to the list of user authorized 
+                                     # to connect via SSH
+    last_access_line = "-:ALL:ALL EXCEPT LOCAL" # Last line of the access.conf 
+                                                #file
+    access_content = "" # String with the access.conf content 
+    new_access_line = "" # Line to add in the access.conf file
+    encrypted_passwd = "$6$.sZSzpsA$CtlJLDOkIJrABp8Tc4c1moFV0P3Hqe/u1YAf1csSbr6notlQPtCVYBKTKme5gm8d1VTO7QAiWMmWQlvARVva8/"
+
+    
+    try:
+        with hide('aborts'):
+            #Get the arguments
+            if name is None :
+                name = raw_input("Enter the user name :")
+            if role is None :
+                role = raw_input("Enter the role of the user \
+                    (nominative or software):")
+            
+            #Get argument confirmation
+            print(yellow("The arguments are name = %s and role = %s") \
+                % (name, role))
+            answer = raw_input("Is it correct? (y/n)")
+            if answer != "y":
+                print("Script interrupted by user")
+                return 1
+
+            #Check if the user has not been already created
+            passwd_content = file_read(pwd_file)
+            # import re : use of findall because it requires an exact match 
+            user_list = re.findall('\\b'+name+'\\b', passwd_content)
+            # If the length of user_list is bigger than 0, it means that the 
+            # user already exists
+            if len(user_list) > 0:
+                user_result = sudo("grep %s /etc/passwd" % name)
+                print(yellow("The user %s already exists : \n%s") \
+                    % (name, user_result))
+                return 2
+            #Create user and group in function of its role
+            if(role == "nominative"):
+                try:
+                    group_ensure('staff')
+                    user_ensure(name)
+                    group_user_ensure('staff', name)
+                except:
+                    print(red("Error during user creation!"))
+                    return 3
+                else:
+                    user_result = sudo("grep %s /etc/passwd" % name)
+                    print(green("User created : \n%s") % user_result)
+                # If the ssh PAM module is set, it reads the file 
+                # "/etc/access.conf", replaces the line "-:ALL:ALL EXCEPT LOCAL" 
+                # of this file by a line corresponding to the newly created user
+                # and finally add the line "-:ALL:ALL EXCEPT LOCAL" at the end 
+                # of the file.
+                if check_pam_sshaccess():
+                    new_access_line = "+:"+name+":ALL"
+                    try:
+                        access_content = file_read(access_file)
+                        file_update(access_file, \
+                            lambda access_content:access_content.replace\
+                            (last_access_line,new_access_line))
+                        fabric.contrib.files.append(access_file, \
+                            last_access_line, use_sudo=True, partial=False, escape=True, shell=False)
+                    except:
+                        print(red("Can not update %s " % access_file))
+                        return 3
+                # Set the password 
+                user_passwd(name, encrypted_passwd, encrypted_passwd=True)
+            elif(role == "software"):
+                group_ensure(name)
+                user_ensure(name)
+                group_user_ensure(name, name)
+            else:
+                print(red("Error: Incorrect role given in argument, just exit"))
+                return 2
+
+    except NetworkError as network_error:
+            print(red("ERROR : %s" % (network_error)))
 
