@@ -529,7 +529,7 @@ def create_user(name = None, role = None):
             #Get argument confirmation
             print(yellow("The arguments are name = %s and role = %s") \
                 % (name, role))
-            answer = raw_input("Is it correct? (y/n)")
+            answer = raw_input("Is it correct? (y/n):")
             if answer != "y":
                 print("Script interrupted by user")
                 return 1
