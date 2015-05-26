@@ -566,9 +566,8 @@ def create_user(name = None, role = None):
                     new_access_line = "+:"+name+":ALL"
                     try:
                         access_content = file_read(access_file)
-                        file_update(access_file, \
-                            lambda access_content:access_content.replace\
-                            (last_access_line,new_access_line))
+                        fabric.contrib.files.sed(access_file, \
+                        	last_access_line, new_access_line, use_sudo=True)
                         fabric.contrib.files.append(access_file, \
                             last_access_line, use_sudo=True, partial=False)
                     except:
